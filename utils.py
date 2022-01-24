@@ -11,6 +11,8 @@ import pickle
 import numpy as np
 import scipy.linalg as sl
 import random
+import math
+import csv
 
 import copy
 class DataLoader_bytrajec2():
@@ -19,14 +21,15 @@ class DataLoader_bytrajec2():
         self.args=args
         if self.args.dataset=='eth5':
 
-            self.data_dirs = ['./data/eth/univ', './data/eth/hotel',
-                              './data/ucy/zara/zara01', './data/ucy/zara/zara02',
-                              './data/ucy/univ/students001','data/ucy/univ/students003',
-                              './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
-
+            # self.data_dirs = ['./data/eth/univ', './data/eth/hotel',
+            #                   './data/ucy/zara/zara01', './data/ucy/zara/zara02',
+            #                   './data/ucy/univ/students001','data/ucy/univ/students003',
+            #                   './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
+            self.data_dirs = ['./data/nuscenes/train', './data/nuscenes/val']
             # Data directory where the pre-processed pickle file resides
             self.data_dir = './data'
-            skip=[6,10,10,10,10,10,10,10]
+            # skip=[6,10,10,10,10,10,10,10]
+            skip=[1,1]
 
             if args.ifvalid:
                 self.val_fraction = args.val_fraction
@@ -56,9 +59,13 @@ class DataLoader_bytrajec2():
         self.traject_preprocess('test')
         print("Done.")
 
+        self.num_tra=0
+
         # Load the processed data from the pickle file
         print("Preparing data batches.")
         if not(os.path.exists(self.train_batch_cache)):
+            #self.frameped_dict：当前数据中，每一帧所包含的行人ID
+            # self.pedtraject_dict：当前数据中，每个行人的轨迹信息，包含pedID, x, y
             self.frameped_dict, self.pedtraject_dict=self.load_dict(self.train_data_file)
             self.dataPreprocess('train')
         if not(os.path.exists(self.test_batch_cache)):
@@ -77,6 +84,10 @@ class DataLoader_bytrajec2():
         self.reset_batch_pointer(set='train',valid=False)
         self.reset_batch_pointer(set='train',valid=True)
         self.reset_batch_pointer(set='test',valid=False)
+    
+
+            
+
     def traject_preprocess(self,setname):
         '''
         data_dirs : List of directories where raw data resides
@@ -101,23 +112,26 @@ class DataLoader_bytrajec2():
             file_path = os.path.join(directory, 'true_pos_.csv')
             # Load the data from the csv file
             data = np.genfromtxt(file_path, delimiter=',')
-            # Frame IDs of the frames in the current dataset
 
+            # Ped IDs of the frames in the current dataset
             Pedlist = np.unique(data[1, :]).tolist()
             numPeds = len(Pedlist)
-            # Add the list of frameIDs to the frameList_data
+            # Add the list of PedIDs to the PedList_data
             Pedlist_data.append(Pedlist)
             # Initialize the list of numpy arrays for the current dataset
             all_frame_data.append([])
             # Initialize the list of numpy arrays for the current dataset
             valid_frame_data.append([])
+            #当前数据中，每个行人轨迹帧数数据
             numFrame_data.append([])
+            #当前数据中，每一帧所包含的行人ID
             frameped_dict.append({})
+            #当前数据中，每个行人的轨迹信息，包含pedID, x, y
             pedtrajec_dict.append({})
 
             for ind, pedi in enumerate(Pedlist):
                 if ind%100==0:
-                    print(ind,len(Pedlist))
+                    print(ind,len(Pedlist),"-----")
                 # Extract trajectories of one person
                 FrameContainPed = data[:, data[1, :] == pedi]
                 # Extract peds list
@@ -154,10 +168,13 @@ class DataLoader_bytrajec2():
         total_frame = 0
         for seti,dict in enumerate(data_dict):
             frames=sorted(dict)
+            #TODO,这一步需要更改
             maxframe=max(frames)-self.args.seq_length
             frames = [x for x in frames if not x>maxframe]
             total_frame+=len(frames)
+            #set_id:每帧数据所对应的数据集，以此检索采样频率
             set_id.extend(list(seti for i in range(len(frames))))
+            #frame_id_in_set:每帧数据中包含的行人ID
             frame_id_in_set.extend(list(frames[i] for i in range(len(frames))))
         all_frame_id_list = list(i for i in range(total_frame))
 
@@ -191,14 +208,18 @@ class DataLoader_bytrajec2():
         last_frame=0
         for i in range(data_index.shape[1]):
             if i%100==0:
-                print(i,'/',data_index.shape[1])
+                print(i,'/number of frames of data in total',data_index.shape[1])
             cur_frame,cur_set,_= data_index[:,i]
+            #起始帧所有track id
             framestart_pedi=set(frameped_dict[cur_set][cur_frame])
             try:
+                #终止帧所有track id
                 frameend_pedi=set(frameped_dict[cur_set][cur_frame+self.args.seq_length*skip[cur_set]])
             except:
                 continue
+            #present_pedi：起始帧和终止帧包含的全部行人ID
             present_pedi=framestart_pedi | frameend_pedi
+            #如果起始和结束帧无一个重复行人ID，则continue
             if (framestart_pedi & frameend_pedi).__len__()==0:
                 continue
             traject=()
@@ -218,14 +239,18 @@ class DataLoader_bytrajec2():
                 cur_trajec=(cur_trajec[:,1:].reshape(-1,1,self.args.input_size),)
                 traject=traject.__add__(cur_trajec)
                 IFfull.append(iffull)
+            #起始帧和终止帧之间无一条有效轨迹，continue
             if traject.__len__()<1:
                 continue
+            #起始帧和终止帧之间无一条完整轨迹，continue
             if sum(IFfull)<1:
                 continue
+            self.num_tra+=traject.__len__()
             traject_batch=np.concatenate(traject,1)
             batch_pednum=sum([i.shape[1] for i in batch_data])+traject_batch.shape[1]
-
+            #当前起始帧到终止帧之间有效的行人轨迹数量
             cur_pednum = traject_batch.shape[1]
+            #当前所有帧有效行人轨迹总数
             ped_cnt += cur_pednum
             batch_id = (cur_set, cur_frame,)
 
@@ -325,22 +350,23 @@ class DataLoader_bytrajec2():
         '''
         return_trajec = np.zeros((seq_length, 3))
         endframe=startframe+(seq_length)*skip
+        #判断起始帧和终止帧的在轨迹中的index
         start_n = np.where(trajectory[:, 0] == startframe)
         end_n=np.where(trajectory[:,0]==endframe)
         iffull = False
         ifexsitobs = False
-
-        if start_n[0].shape[0] == 0 and end_n[0].shape[0] != 0:
+        print(start_n[0].shape)
+        if start_n[0].shape[0] == 0 and end_n[0].shape[0] != 0:  #起始帧无轨迹，终止帧有轨迹
             start_n = 0
             end_n = end_n[0][0]
             if end_n==0:
                 return return_trajec, iffull, ifexsitobs
 
-        elif end_n[0].shape[0] == 0 and start_n[0].shape[0] != 0:
+        elif end_n[0].shape[0] == 0 and start_n[0].shape[0] != 0: #起始帧有轨迹，终止帧无轨迹
             start_n = start_n[0][0]
             end_n = trajectory.shape[0]
-
-        elif end_n[0].shape[0] == 0 and start_n[0].shape[0] == 0:
+        #这个判断跟前面present_pedi的判断条件自相矛盾，这个判断的情况不会出现！
+        elif end_n[0].shape[0] == 0 and start_n[0].shape[0] == 0: #起始帧和终止帧都无轨迹，轨迹在起始和终止帧之间
             start_n = 0
             end_n = trajectory.shape[0]
 
@@ -361,7 +387,7 @@ class DataLoader_bytrajec2():
 
         if offset_end - offset_start >= seq_length-1:
             iffull = True
-
+        
         return return_trajec, iffull, ifexsitobs
 
     def massup_batch(self,batch_data):
@@ -371,9 +397,9 @@ class DataLoader_bytrajec2():
         num_Peds=0
         for batch in batch_data:
             num_Peds+=batch.shape[1]
-
-        seq_list_b=np.zeros((self.args.seq_length,0))
-        nodes_batch_b=np.zeros((self.args.seq_length,0,2))
+        #这两行定义无用！！
+        # seq_list_b=np.zeros((self.args.seq_length,0))
+        # nodes_batch_b=np.zeros((self.args.seq_length,0,2))
 
         nei_list_b=np.zeros((self.args.seq_length,num_Peds,num_Peds))
         nei_num_b=np.zeros((self.args.seq_length,num_Peds))
@@ -395,12 +421,14 @@ class DataLoader_bytrajec2():
         Get the sequence list (denoting where data exsist) and neighboring list (denoting where neighbors exsist).
         '''
         num_Peds = inputnodes.shape[1]
-
+        #inputnodes.shape[0]==seq_length
         seq_list = np.zeros((inputnodes.shape[0], num_Peds))
         # denote where data not missing
 
+
         for pedi in range(num_Peds):
             seq = inputnodes[:, pedi]
+            #判断20步轨迹中哪里真的有轨迹，只有x坐标值不为0时才是真的有轨迹
             seq_list[seq[:, 0] != 0, pedi] = 1
 
         # get relative cords, neighbor id list
@@ -420,11 +448,12 @@ class DataLoader_bytrajec2():
                 relative_cord = seqi[select, :2] - seqj[select, :2]
 
                 # invalid data index
+                #当两个邻居相对距离大于阈值为无效邻居
                 select_dist = (abs(relative_cord[:, 0]) > self.args.neighbor_thred) | (
                 abs(relative_cord[:, 1]) > self.args.neighbor_thred)
-
+                #对无效邻居邻居数更新
                 nei_num[select, pedi] -= select_dist
-
+                #对无效邻居的nei_list进行更新
                 select[select == True] = select_dist
                 nei_list[select, pedi, pedj] = 0
         return seq_list, nei_list, nei_num
@@ -432,6 +461,8 @@ class DataLoader_bytrajec2():
     def rotate_shift_batch(self,batch_data,ifrotate=True):
         '''
         Random ration and zero shifting.
+        Random rotation is also helpful for reducing overfitting.
+        For one mini-batch, random rotation is employed for data augmentation.用于数据增加
         '''
         batch, seq_list, nei_list,nei_num,batch_pednum=batch_data
 
@@ -498,9 +529,14 @@ def L2forTest(outputs,targets,obs_length,lossMask):
     Evaluation.
     '''
     seq_length = outputs.shape[0]
+    outputs[:,:,0]=(outputs[:,:,0]+1)*635.736955/2-266.84548329
+    outputs[:,:,1]=(outputs[:,:,1]+1)*558.0102949/2-283.75737486
+    targets[:,:,0]=(targets[:,:,0]+1)*635.736955/2-266.84548329
+    targets[:,:,1]=(targets[:,:,1]+1)*558.0102949/2-283.75737486
     error=torch.norm(outputs-targets,p=2,dim=2)
     #only calculate the pedestrian presents fully presented in the time window
     pedi_full=torch.sum(lossMask,dim=0)==seq_length
+    #预测部分的erro
     error_full=error[obs_length-1:,pedi_full]
     error=torch.sum(error_full)
     error_cnt=error_full.numel()
@@ -513,6 +549,10 @@ def L2forTest_nl(outputs,targets,obs_length,lossMask,seq_list,nl_thred):
     Evaluation including non-linear ade/fde.
     '''
     nl_list=torch.zeros(lossMask.shape).cuda()
+    outputs[:,:,0]=(outputs[:,:,0]+1)*518.9717012/2-249.609077
+    outputs[:,:,1]=(outputs[:,:,1]+1)*533.6579701/2-259.405050
+    targets[:,:,0]=(targets[:,:,0]+1)*518.9717012/2-249.609077
+    targets[:,:,1]=(targets[:,:,1]+1)*533.6579701/2-259.405050
     pednum=targets.shape[1]
     for ped in range(pednum):
         traj=targets[seq_list[:,ped]>0,ped]

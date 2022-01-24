@@ -137,11 +137,11 @@ def get_parser():
 
     #Perprocess
     parser.add_argument(
-        '--seq_length',default=20,type=int)
+        '--seq_length',default=13,type=int)
     parser.add_argument(
-        '--obs_length',default=8,type=int)
+        '--obs_length',default=5,type=int)
     parser.add_argument(
-        '--pred_length',default=12,type=int)
+        '--pred_length',default=8,type=int)
     parser.add_argument(
         '--batch_around_ped',default=128,type=int)
     parser.add_argument(
@@ -202,10 +202,11 @@ if __name__ == '__main__':
     p.save_dir=p.save_base_dir+str(p.test_set)+'/'
     p.model_dir=p.save_base_dir+str(p.test_set)+'/'+p.train_model+'/'
     p.config=p.model_dir+'/config_'+p.phase+'.yaml'
-
+    print(p.seq_length)
     if not load_arg(p):
         save_arg(p)
     args = load_arg(p)
+    print(args.seq_length)
     torch.cuda.set_device(args.gpu)
     processor = Processor(args)
     if args.phase=='test':
