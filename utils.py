@@ -25,7 +25,7 @@ class DataLoader_bytrajec2():
             #                   './data/ucy/zara/zara01', './data/ucy/zara/zara02',
             #                   './data/ucy/univ/students001','data/ucy/univ/students003',
             #                   './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
-            self.data_dirs = ['./data/nuscenes/train', './data/nuscenes/val']
+            self.data_dirs = ['./data/nuscenes/mini/train', './data/mini/nuscenes/val']
             # Data directory where the pre-processed pickle file resides
             self.data_dir = './data'
             # skip=[6,10,10,10,10,10,10,10]
@@ -55,6 +55,7 @@ class DataLoader_bytrajec2():
         self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache.cpkl")
 
         print("Creating pre-processed data from raw data.")
+        #TODO：从这里将当前帧所有轨迹数据传入去做inferencexq
         self.traject_preprocess('train')
         self.traject_preprocess('test')
         print("Done.")
@@ -176,13 +177,14 @@ class DataLoader_bytrajec2():
             set_id.extend(list(seti for i in range(len(frames))))
             #frame_id_in_set:每帧数据中包含的行人ID
             frame_id_in_set.extend(list(frames[i] for i in range(len(frames))))
+        #frame 索引
         all_frame_id_list = list(i for i in range(total_frame))
 
         data_index = np.concatenate((np.array([frame_id_in_set], dtype=int), np.array([set_id], dtype=int),
                                  np.array([all_frame_id_list], dtype=int)), 0)
-        if ifshuffle:
-            random.Random().shuffle(all_frame_id_list)
-        data_index = data_index[:, all_frame_id_list]
+        # if ifshuffle:
+        #     random.Random().shuffle(all_frame_id_list)
+        # data_index = data_index[:, all_frame_id_list]
 
         #to make full use of the data
         if setname=='train':
@@ -260,7 +262,9 @@ class DataLoader_bytrajec2():
                 ind = traject_batch[self.args.obs_length - 1].argsort(0)
                 cur_batch_data,cur_Batch_id=[],[]
                 Seq_batchs = [traject_batch[:,ind[:cur_pednum // 2,0]], traject_batch[:,ind[cur_pednum // 2:, 0]]]
+                
                 for sb in Seq_batchs:
+                    #这里好像有问题
                     cur_batch_data.append(sb)
                     cur_Batch_id.append(batch_id)
                     cur_batch_data=self.massup_batch(cur_batch_data)
@@ -387,7 +391,7 @@ class DataLoader_bytrajec2():
 
         if offset_end - offset_start >= seq_length-1:
             iffull = True
-        
+
         return return_trajec, iffull, ifexsitobs
 
     def massup_batch(self,batch_data):
@@ -398,8 +402,8 @@ class DataLoader_bytrajec2():
         for batch in batch_data:
             num_Peds+=batch.shape[1]
         #这两行定义无用！！
-        # seq_list_b=np.zeros((self.args.seq_length,0))
-        # nodes_batch_b=np.zeros((self.args.seq_length,0,2))
+        seq_list_b=np.zeros((self.args.seq_length,0))
+        nodes_batch_b=np.zeros((self.args.seq_length,0,2))
 
         nei_list_b=np.zeros((self.args.seq_length,num_Peds,num_Peds))
         nei_num_b=np.zeros((self.args.seq_length,num_Peds))
@@ -424,13 +428,10 @@ class DataLoader_bytrajec2():
         #inputnodes.shape[0]==seq_length
         seq_list = np.zeros((inputnodes.shape[0], num_Peds))
         # denote where data not missing
-
-
         for pedi in range(num_Peds):
             seq = inputnodes[:, pedi]
             #判断20步轨迹中哪里真的有轨迹，只有x坐标值不为0时才是真的有轨迹
             seq_list[seq[:, 0] != 0, pedi] = 1
-
         # get relative cords, neighbor id list
         nei_list = np.zeros((inputnodes.shape[0], num_Peds, num_Peds))
         nei_num = np.zeros((inputnodes.shape[0], num_Peds))
@@ -472,9 +473,9 @@ class DataLoader_bytrajec2():
             cur_ori = batch.copy()
             batch[:, :, 0] = cur_ori[:, :, 0] * np.cos(th) - cur_ori[:,:, 1] * np.sin(th)
             batch[:, :, 1] = cur_ori[:, :, 0] * np.sin(th) + cur_ori[:,:, 1] * np.cos(th)
-        # get shift value
+        # get shift value，以观察的最后一个轨迹点作为原点。
         s = batch[self.args.obs_length - 1]
-
+        #，shift the origin to the latest observed time step
         shift_value = np.repeat(s.reshape((1, -1, 2)), self.args.seq_length, 0)
 
         batch_data=batch,batch-shift_value,shift_value,seq_list,nei_list,nei_num,batch_pednum
