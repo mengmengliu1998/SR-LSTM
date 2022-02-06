@@ -189,7 +189,7 @@ class GCN(nn.Module):
 
         if corr_t[nei_index_t > 0].shape[0] == 0:
             # Ignore when no neighbor in this batch
-            return lstm_state, (0, 0, 0),(0,0)
+            return lstm_state, (0, 0, 0)
 
         r_t = self.relativeLayer.MLP(corr_t[nei_index_t > 0])
         inputs_part = nei_inputs[nei_index_t > 0]

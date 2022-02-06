@@ -53,7 +53,7 @@ class SR_LSTM(nn.Module):
         num_Ped = nodes_norm.shape[1]
         
         outputs=torch.zeros(nodes_norm.shape[0],num_Ped, self.args.output_size)
-        hidden_states = torch.zeros(num_Ped, self.args.rnn_size) #参数w和b是多维的，因为特征是多维度的
+        hidden_states = torch.zeros(num_Ped, self.args.rnn_size)
         cell_states = torch.zeros(num_Ped, self.args.rnn_size)
 
         value1_sum=0
@@ -67,7 +67,7 @@ class SR_LSTM(nn.Module):
             
         # For each frame in the sequence
         for framenum in range(self.args.seq_length-1):
-            #changed by LMM :使用相对坐标实验
+                       #changed by LMM :使用相对坐标实验
             # if framenum==0:
             #     outputs[framenum,:]=nodes_norm[framenum,:]
             # else:
@@ -75,32 +75,30 @@ class SR_LSTM(nn.Module):
                 #不同的node代表不同行人的轨迹
                 node_index = seq_list[self.args.obs_length - 1] > 0 #当至少存在一步观察轨迹时，我们才认为这段轨迹是有效轨迹
                 nodes_current = outputs[framenum - 1, node_index].clone()  #取有效轨迹上一帧的输出，使用上一帧的输出作为当前帧输入
-                #相对坐标值
-                relative_cor=nodes_current-outputs[framenum - 2, node_index].clone() 
                 nodes_abs=shift_value[framenum,node_index]+nodes_current   #绝对轨迹值
-
                 nodes_abs=nodes_abs.repeat(nodes_abs.shape[0], 1, 1)
                 #此transpose(0,1)并不对corr造成任何变化
-                corr_index=nodes_abs.transpose(0,1)-nodes_abs    #Correction
+                corr_index=nodes_abs.transpose(0,1)-nodes_abs    #Correction，shift the origin to the latest observed time step
+                # print("corr_index",corr_index)
             else: #训练阶段
-                node_index=seq_list[framenum]>0    #当前帧有轨迹时，我们才使用这段轨迹
-                relative_node_index=seq_list[framenum-1]>0 and seq_list[framenum]>0  
+                node_index=seq_list[framenum]>0   #当前帧有轨迹时，我们才使用这段轨迹
                 nodes_current = nodes_norm[framenum,node_index]  #使用GT作为输入
-                #相对坐标值
-                relative_cor=nodes_current-nodes_norm[framenum-1,node_index]
+                if nodes_current.shape[0]==0:
+                    continue
+                # print("nodes_current.shape",nodes_current.shape)
+                # print("nodes_current.shape[0]",nodes_current.shape[0])
                 corr = nodes_abs[framenum, node_index].repeat(nodes_current.shape[0], 1, 1)
+                # print("corr.shape",corr.shape)
                 nei_index = nei_list[framenum, node_index]
                 nei_index = nei_index[:, node_index]
                 # relative coords
-                corr_index = corr.transpose(0,1)-corr  #此transpose(0,1)并不对corr造成任何变化
+                corr_index = corr.transpose(0,1)-corr  
                 nei_num_index=nei_num[framenum,node_index]
-
+                # print("corr.transpose(0,1)[2,3]",corr.transpose(0,1)[2,3],"corr[2,3]",corr[2,3],"corr.transpose(0,1)[3,2]",corr.transpose(0,1)[3,2])
             hidden_states_current=hidden_states[node_index]
             cell_states_current=cell_states[node_index]
-            #输入的特征中完全没用到绝对坐标值
+            #TODO:更改这里可以选择使用相对坐标还是绝对坐标
             input_embedded = self.dropout(self.input_Ac(self.inputLayer(nodes_current)))
-            # input_embedded = self.dropout(self.input_Ac(self.inputLayer(relative_cor)))
-
             lstm_state = self.cell.forward(input_embedded, (hidden_states_current,cell_states_current))
 
             for p in range(self.args.passing_time ):
@@ -121,6 +119,7 @@ class SR_LSTM(nn.Module):
             outputs[framenum,node_index]=outputs_current      #更新当前帧有效轨迹的输出
             hidden_states[node_index]=hidden_states_current  #更新当前帧有效轨迹的h
             cell_states[node_index] = cell_states_current    #更新当前帧有效轨迹的c
+            # print("outputs",outputs)
 
         return outputs, hidden_states, cell_states,(value1_sum/self.args.seq_length,value2_sum/self.args.seq_length,value3_sum/self.args.seq_length)
 
