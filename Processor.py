@@ -13,13 +13,14 @@ class Processor():
 
         Dataloader=DataLoader_bytrajec2
 
-        self.dataloader = Dataloader(args)
+        self.dataloader_gt = Dataloader(args,is_gt=True)
+        self.dataloader_pd=Dataloader(args,is_gt=False)
         model=import_class(args.model)
         self.net = model(args)
         self.set_optimizer()
         self.epoch=0
         self.load_model()
-
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.1)
         # self.load_weights_from_srlstm()
         # self.parameters_update_seton_secondSR()
         # Uncomment if train the second SR layer
@@ -28,7 +29,7 @@ class Processor():
             self.net=self.net.cuda()
         else:
             self.net=self.net.cpu()
-        print(self.net)
+        # print(self.net)
 
         self.net_file = open(os.path.join(self.args.model_dir, 'net.txt'), 'a+')
         self.net_file.write(str(self.net))
@@ -135,7 +136,8 @@ class Processor():
         find_result=[]
         test_error, test_final_error=0,0
         for epoch in range(self.epoch,self.args.num_epochs):
-
+            self.scheduler.step()
+            print('Epoch-{0} lr: {1}'.format(epoch, self.optimizer.param_groups[0]['lr']))
             train_loss,_=self.train_epoch(epoch)
             val_error,val_final,_,_,_= self.val_epoch(epoch)
 
@@ -163,21 +165,28 @@ class Processor():
             return B,Bepoch
 
     def train_epoch(self,epoch):
-        self.dataloader.reset_batch_pointer(set='train', valid=False)
+        self.dataloader_pd.reset_batch_pointer(set='train', valid=False)
 
         loss_epoch=0
         v1_sum,v2_sum,v3_sum=0,0,0
 
-        for batch in range(self.dataloader.trainbatchnums):
+        for batch in range(self.dataloader_pd.trainbatchnums):
             start = time.time()
-            inputs,batch_id = self.dataloader.get_train_batch(batch)
+            print("pd.get_train_batch")
+            # np.random.seed((epoch+1)*2*(batch+1))
+            inputs,batch_id = self.dataloader_pd.get_train_batch(batch,epoch)
+            print("_gt.get_train_batch")
+            # np.random.seed((epoch+1)*2*(batch+1))
+            inputs_gt,batch_id_gt=self.dataloader_gt.get_train_batch(batch,epoch)
+            inputs_gt = tuple([torch.Tensor(i) for i in inputs_gt])
+            inputs_gt = tuple([i.cuda() for i in inputs_gt])
             inputs = tuple([torch.Tensor(i) for i in inputs])
             inputs = tuple([i.cuda() for i in inputs])
-
+            batch_abs_gt, batch_norm_gt, shift_value_gt, seq_list_gt, nei_list_gt, nei_num_gt, batch_pednum_gt= inputs_gt
             loss=torch.zeros(1).cuda()
             batch_abs, batch_norm, shift_value, seq_list, nei_list, nei_num, batch_pednum = inputs
             inputs_fw = batch_abs[:-1], batch_norm[:-1], shift_value[:-1], seq_list[:-1], nei_list[:-1], nei_num[:-1], batch_pednum[:-1]
-
+            # print("batch_norm_gt[1:,0,:2])",batch_norm_gt,"batch_norm",batch_norm)
             self.net.zero_grad()
 
             outputs, _, _ ,look= self.net.forward(inputs_fw,iftest=False)
@@ -188,7 +197,7 @@ class Processor():
             v3_sum+=v3
 
             lossmask,num=getLossMask(outputs, seq_list[0],seq_list[1:],using_cuda=self.args.using_cuda)  #计算loss时只计算存在轨迹处的loss
-            loss_o=torch.sum(self.criterion(outputs, batch_norm[1:,:,:2]),dim=2) #使用了MSEloss
+            loss_o=torch.sum(self.criterion(outputs, batch_norm_gt[1:,:,:2]),dim=2) #使用了MSEloss
 
             loss += torch.sum(loss_o*lossmask)/num
             loss_epoch+=loss.item()
@@ -198,31 +207,34 @@ class Processor():
             end= time.time()
             if batch%self.args.show_step==0 and self.args.ifshow_detail:
                 print(
-                'train-{}/{} (epoch {}), train_loss = {:.5f}, time/batch = {:.5f}, value1={:.5f},value2={:.5f},value3={:.5f}'.format(batch,self.dataloader.trainbatchnums,
+                'train-{}/{} (epoch {}), train_loss = {:.5f}, time/batch = {:.5f}, value1={:.5f},value2={:.5f},value3={:.5f}'.format(batch,self.dataloader_pd.trainbatchnums,
                                                                                 epoch,
                                                                                 loss.item(), end - start,v1,v2,v3))
-        train_loss_epoch = loss_epoch / self.dataloader.trainbatchnums
-        v1_sum=v1_sum / self.dataloader.trainbatchnums
-        v2_sum=v2_sum / self.dataloader.trainbatchnums
-        v3_sum=v3_sum / self.dataloader.trainbatchnums
+        train_loss_epoch = loss_epoch / self.dataloader_pd.trainbatchnums
+        v1_sum=v1_sum / self.dataloader_pd.trainbatchnums
+        v2_sum=v2_sum / self.dataloader_pd.trainbatchnums
+        v3_sum=v3_sum / self.dataloader_pd.trainbatchnums
 
         return train_loss_epoch,(v1_sum,v2_sum,v3_sum)
 
     def val_epoch(self, epoch):
-        if self.dataloader.val_fraction==0:
+        if self.dataloader_pd.val_fraction==0:
             return 0,0,0
-        self.dataloader.reset_batch_pointer(set='train', valid=True)
+        self.dataloader_pd.reset_batch_pointer(set='train', valid=True)
         error_epoch,final_error_epoch = 0,0
         error_cnt_epoch,final_error_cnt_epoch = 1e-5,1e-5
 
         v1_sum,v2_sum,v3_sum=0,0,0
         v1,v2,v3=0,0,0
-        for batch in range(self.dataloader.valbatchnums):
+        for batch in range(self.dataloader_pd.valbatchnums):
 
-            inputs,batch_id = self.dataloader.get_val_batch(batch)
+            inputs,batch_id = self.dataloader_pd.get_val_batch(batch,epoch)
+            inputs_gt,batch_id_gt=self.dataloader_gt.get_val_batch(batch,epoch)
+            inputs_gt = tuple([torch.Tensor(i) for i in inputs_gt])
+            inputs_gt = tuple([i.cuda() for i in inputs_gt])
             inputs = tuple([torch.Tensor(i) for i in inputs])
             inputs = tuple([i.cuda() for i in inputs])
-
+            batch_abs_gt, batch_norm_gt, shift_value_gt, seq_list_gt, nei_list_gt, nei_num_gt, batch_pednum_gt= inputs_gt
             batch_abs, batch_norm, shift_value, seq_list, nei_list, nei_num, batch_pednum = inputs
             inputs_fw = batch_abs[:-1], batch_norm[:-1], shift_value[:-1], seq_list[:-1], nei_list[:-1], nei_num[:-1], batch_pednum[:-1]
             forward = self.net.forward
@@ -230,7 +242,7 @@ class Processor():
             outputs_infer, _, _, look = forward(inputs_fw, iftest=True)
             lossmask, num = getLossMask(outputs_infer, seq_list[0], seq_list[1:], using_cuda=self.args.using_cuda)
 
-            error, error_cnt, final_error, final_error_cnt, _ = L2forTest(outputs_infer, batch_norm[1:, :, :2],
+            error, error_cnt, final_error, final_error_cnt, _ = L2forTest(outputs_infer, batch_norm_gt[1:, :, :2],
                                                                           self.args.obs_length, lossmask)
 
             v1, v2, v3=look
@@ -243,9 +255,9 @@ class Processor():
             final_error_epoch+=final_error
             final_error_cnt_epoch+=final_error_cnt
 
-        v1_sum=v1_sum / self.dataloader.valbatchnums
-        v2_sum=v2_sum / self.dataloader.valbatchnums
-        v3_sum=v3_sum / self.dataloader.valbatchnums
+        v1_sum=v1_sum / self.dataloader_pd.valbatchnums
+        v2_sum=v2_sum / self.dataloader_pd.valbatchnums
+        v3_sum=v3_sum / self.dataloader_pd.valbatchnums
 
         val_error=error_epoch/error_cnt_epoch
         final_error=final_error_epoch/final_error_cnt_epoch
@@ -253,22 +265,26 @@ class Processor():
         return val_error,final_error,0,0,(v1_sum,v2_sum,v3_sum)
 
     def test_epoch(self,epoch):
-        self.dataloader.reset_batch_pointer(set='test')
+        self.dataloader_pd.reset_batch_pointer(set='test')
         error_epoch,final_error_epoch,error_nl_epoch = 0,0,0
         error_cnt_epoch,final_error_cnt_epoch,error_nl_cnt_epoch= 1e-5,1e-5,1e-5
 
         value1_sum,value2_sum,value3_sum=0,0,0
 
-        for batch in range(self.dataloader.testbatchnums):
+        for batch in range(self.dataloader_pd.testbatchnums):
             if batch%100==0:
-                print('testing batch',batch,self.dataloader.testbatchnums)
-            inputs, batch_id = self.dataloader.get_test_batch(batch)
+                print('testing batch',batch,self.dataloader_pd.testbatchnums)
+            inputs, batch_id = self.dataloader_pd.get_test_batch(batch,epoch)
+            inputs_gt,batch_id_gt=self.dataloader_gt.get_test_batch(batch,epoch)
+            inputs_gt = tuple([torch.Tensor(i) for i in inputs_gt])
+            inputs_gt = tuple([i.cuda() for i in inputs_gt])
             inputs = tuple([torch.Tensor(i) for i in inputs])
-
             if self.args.using_cuda:
                 inputs = tuple([i.cuda() for i in inputs])
-
+                inputs_gt=tuple([i.cuda() for i in inputs_gt])
+            batch_abs_gt, batch_norm_gt, shift_value_gt, seq_list_gt, nei_list_gt, nei_num_gt, batch_pednum_gt= inputs_gt
             batch_abs, batch_norm, shift_value, seq_list, nei_list, nei_num, batch_pednum = inputs
+            # print("batch_norm_gt[1:,0,:2])",batch_norm_gt,"batch_norm",batch_norm)
             inputs_fw = batch_abs[:-1], batch_norm[:-1], shift_value[:-1], seq_list[:-1], nei_list[:-1], nei_num[:-1], batch_pednum[:-1]
             forward = self.net.forward
             self.net.zero_grad()
@@ -280,7 +296,7 @@ class Processor():
             value3_sum += value3
 
             lossmask, num = getLossMask(outputs_infer, seq_list[0], seq_list[1:], using_cuda=self.args.using_cuda)
-            error, error_cnt, final_error, final_error_cnt, error_nl,error_nl_cnt,_ = L2forTest_nl(outputs_infer, batch_norm[1:, :, :2],
+            error, error_cnt, final_error, final_error_cnt, error_nl,error_nl_cnt,_ = L2forTest_nl(outputs_infer, batch_norm_gt[1:, :, :2],
                                                                               self.args.obs_length, lossmask,seq_list[1:],nl_thred=0)
 
             error_epoch += error
@@ -290,9 +306,9 @@ class Processor():
             error_nl_epoch+=error_nl
             error_nl_cnt_epoch+=error_nl_cnt
 
-        value1_sum=value1_sum / self.dataloader.testbatchnums
-        value2_sum=value2_sum / self.dataloader.testbatchnums
-        value3_sum=value3_sum / self.dataloader.testbatchnums
+        value1_sum=value1_sum / self.dataloader_pd.testbatchnums
+        value2_sum=value2_sum / self.dataloader_pd.testbatchnums
+        value3_sum=value3_sum / self.dataloader_pd.testbatchnums
         return error_epoch / error_cnt_epoch, final_error_epoch / final_error_cnt_epoch, \
               error_nl_epoch/error_nl_cnt_epoch, (value1_sum,value2_sum,value3_sum),error_cnt_epoch
 
