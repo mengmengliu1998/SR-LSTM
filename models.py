@@ -67,40 +67,61 @@ class SR_LSTM(nn.Module):
             
         # For each frame in the sequence
         for framenum in range(self.args.seq_length-1):
-            #changed by LMM :使用相对坐标实验
-            # if framenum==0:
-            #     outputs[framenum,:]=nodes_norm[framenum,:]
-            # else:
+             #changed by LMM :get speed mask
+            seq_length = outputs.shape[0]
+            node_pre=seq_list[0]
+            speedmask=torch.zeros(seq_length,seq_list.shape[1])
+            speedmask=speedmask.cuda()
+            for i in range(seq_length):
+                speedmask[i]=seq_list[i]*node_pre
+                if i>0:
+                    node_pre=seq_list[i-1]
+            # speedmask=np.repeat(speedmask, 2, axis=1)
             if framenum >= self.args.obs_length and iftest:   #inference阶段
                 #不同的node代表不同行人的轨迹
                 node_index = seq_list[self.args.obs_length - 1] > 0 #当至少存在一步观察轨迹时，我们才认为这段轨迹是有效轨迹
                 nodes_current = outputs[framenum - 1, node_index].clone()  #取有效轨迹上一帧的输出，使用上一帧的输出作为当前帧输入
-                #相对坐标值
-                relative_cor=nodes_current-outputs[framenum - 2, node_index].clone() 
+                if nodes_current.shape[0]==0:
+                    continue
                 nodes_abs=shift_value[framenum,node_index]+nodes_current   #绝对轨迹值
-
-                nodes_abs=nodes_abs.repeat(nodes_abs.shape[0], 1, 1)
+                nodes_abs_nei=nodes_abs_nei.repeat(nodes_abs.shape[0], 1, 1)
                 #此transpose(0,1)并不对corr造成任何变化
-                corr_index=nodes_abs.transpose(0,1)-nodes_abs    #Correction
+                corr_index=nodes_abs_nei.transpose(0,1)-nodes_abs_nei    #Correction
+
+                nodes_abs_pre=outputs[framenum - 2, node_index].clone()+shift_value[framenum-1,node_index]
+                nodes_speed=(nodes_abs[:,:]-nodes_abs_pre[:,:])
+                nodes_ori= torch.atan2(nodes_speed[:,1], nodes_speed[:, 0])
+                nodes_velocity=torch.norm(nodes_speed,dim=1)* speedmask[framenum]
             else: #训练阶段
-                node_index=seq_list[framenum]>0    #当前帧有轨迹时，我们才使用这段轨迹
-                relative_node_index=seq_list[framenum-1]>0 and seq_list[framenum]>0  
+                node_index=seq_list[framenum]>0    #当前帧有轨迹时，我们才使用这段轨迹 
                 nodes_current = nodes_norm[framenum,node_index]  #使用GT作为输入
-                #相对坐标值
-                relative_cor=nodes_current-nodes_norm[framenum-1,node_index]
+                # print(nodes_abs[framenum, node_index].shape,nodes_current.shape[0])
+                if nodes_current.shape[0]==0:
+                    continue
                 corr = nodes_abs[framenum, node_index].repeat(nodes_current.shape[0], 1, 1)
                 nei_index = nei_list[framenum, node_index]
                 nei_index = nei_index[:, node_index]
                 # relative coords
                 corr_index = corr.transpose(0,1)-corr  #此transpose(0,1)并不对corr造成任何变化
                 nei_num_index=nei_num[framenum,node_index]
+                if framenum>0:
+                    nodes_abs_pre=nodes_abs[framenum-1, node_index]
+                    # print(speedmask[framenum].shape,nodes_abs[framenum, node_index].shape,nodes_abs_pre[:,:].shape)
+                    nodes_speed=(nodes_abs[framenum, node_index]-nodes_abs_pre[:,:])
 
+                    nodes_ori= torch.atan2(nodes_speed[:,1], nodes_speed[:, 0])* speedmask[framenum, node_index]
+                    nodes_velocity=torch.norm(nodes_speed,dim=1)* speedmask[framenum, node_index]
+                else:
+                    nodes_abs_pre=nodes_abs[framenum, node_index]
+                    nodes_speed=torch.zeros_like(nodes_abs[framenum, node_index])
+                    nodes_ori=torch.zeros_like(nodes_abs[framenum, node_index][:,0])* speedmask[framenum, node_index]
+                    nodes_velocity=torch.norm(nodes_speed,dim=1)* speedmask[framenum, node_index]
+            # print("framenum>",framenum,"nodes_speed","",nodes_speed,"nodes_ori",nodes_ori,"nodes_velocity",nodes_velocity)
+            # print("nodes_abs[framenum, node_index]-nodes_abs_pre[:,:]",nodes_abs[framenum, node_index],nodes_abs_pre[:,:])
             hidden_states_current=hidden_states[node_index]
             cell_states_current=cell_states[node_index]
             #输入的特征中完全没用到绝对坐标值
             input_embedded = self.dropout(self.input_Ac(self.inputLayer(nodes_current)))
-            # input_embedded = self.dropout(self.input_Ac(self.inputLayer(relative_cor)))
-
             lstm_state = self.cell.forward(input_embedded, (hidden_states_current,cell_states_current))
 
             for p in range(self.args.passing_time ):

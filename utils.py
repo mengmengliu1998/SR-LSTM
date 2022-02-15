@@ -4,6 +4,7 @@ This script is modified from 'https://github.com/YuejiangLIU/social-lstm-pytorch
 Author: Pu Zhang
 Date: 2019/7/1
 '''
+from operator import is_
 import torch
 import gc
 import os
@@ -16,16 +17,17 @@ import csv
 
 import copy
 class DataLoader_bytrajec2():
-    def __init__(self, args):
+    def __init__(self, args,is_gt=True):
 
         self.args=args
+        self.is_gt=is_gt
         if self.args.dataset=='eth5':
 
             # self.data_dirs = ['./data/eth/univ', './data/eth/hotel',
             #                   './data/ucy/zara/zara01', './data/ucy/zara/zara02',
             #                   './data/ucy/univ/students001','data/ucy/univ/students003',
             #                   './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
-            self.data_dirs = ['./data/nuscenes/mini/train', './data/mini/nuscenes/val']
+            self.data_dirs = ['./data/nuscenes/subset_04/train', './data/nuscenes/subset_04/val']
             # Data directory where the pre-processed pickle file resides
             self.data_dir = './data'
             # skip=[6,10,10,10,10,10,10,10]
@@ -48,11 +50,17 @@ class DataLoader_bytrajec2():
             self.test_dir = [self.data_dirs[x] for x in self.test_set]
             self.trainskip=[skip[x] for x in train_set]
             self.testskip=[skip[x] for x in self.test_set]
+        if is_gt:
+            self.train_data_file = os.path.join(self.args.save_dir,"train_trajectories_gt.cpkl")
+            self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories_gt.cpkl")
+            self.train_batch_cache = os.path.join(self.args.save_dir,"train_batch_cache_gt.cpkl")
+            self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache_gt.cpkl")
+        else:
+            self.train_data_file = os.path.join(self.args.save_dir,"train_trajectories_pd.cpkl")
+            self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories_pd.cpkl")
+            self.train_batch_cache = os.path.join(self.args.save_dir,"train_batch_cache_pd.cpkl")
+            self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache_pd.cpkl")
 
-        self.train_data_file = os.path.join(self.args.save_dir,"train_trajectories.cpkl")
-        self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories.cpkl")
-        self.train_batch_cache = os.path.join(self.args.save_dir,"train_batch_cache.cpkl")
-        self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache.cpkl")
 
         print("Creating pre-processed data from raw data.")
         #TODO：从这里将当前帧所有轨迹数据传入去做inferencexq
@@ -109,8 +117,10 @@ class DataLoader_bytrajec2():
         pedtrajec_dict=[]#trajectories of a certain ped
         # For each dataset
         for seti,directory in enumerate(data_dirs):
-
-            file_path = os.path.join(directory, 'true_pos_.csv')
+            if self.is_gt:
+                file_path = os.path.join(directory, 'true_pos_gt_.csv')
+            else:
+                file_path = os.path.join(directory, 'true_pos_pd_.csv')
             # Load the data from the csv file
             data = np.genfromtxt(file_path, delimiter=',')
 
@@ -137,8 +147,9 @@ class DataLoader_bytrajec2():
                 FrameContainPed = data[:, data[1, :] == pedi]
                 # Extract peds list
                 FrameList = FrameContainPed[0, :].tolist()
-                if len(FrameList)<2:
-                    continue
+                #TODO:changed by LMM
+                # if len(FrameList)<2:
+                #     continue
                 # Add number of frames of this trajectory
                 numFrame_data[seti].append(len(FrameList))
                 # Initialize the row of the numpy array
@@ -231,12 +242,13 @@ class DataLoader_bytrajec2():
                                                              self.args.seq_length,skip[cur_set])
                 if len(cur_trajec) == 0:
                     continue
-                if ifexistobs==False:
-                    # Just ignore trajectories if their data don't exsist at the last obversed time step (easy for data shift)
-                    continue
-                if sum(cur_trajec[:,0]>0)<5:
-                    # filter trajectories have too few frame data
-                    continue
+                #TODO:CHANGEd by LMM
+                # if ifexistobs==False:
+                #     # Just ignore trajectories if their data don't exsist at the last obversed time step (easy for data shift)
+                #     continue
+                # if sum(cur_trajec[:,0]>0)<5:
+                #     # filter trajectories have too few frame data
+                #     continue
 
                 cur_trajec=(cur_trajec[:,1:].reshape(-1,1,self.args.input_size),)
                 traject=traject.__add__(cur_trajec)
@@ -245,8 +257,8 @@ class DataLoader_bytrajec2():
             if traject.__len__()<1:
                 continue
             #起始帧和终止帧之间无一条完整轨迹，continue
-            if sum(IFfull)<1:
-                continue
+            # if sum(IFfull)<1:
+            #     continue
             self.num_tra+=traject.__len__()
             traject_batch=np.concatenate(traject,1)
             batch_pednum=sum([i.shape[1] for i in batch_data])+traject_batch.shape[1]
@@ -256,52 +268,52 @@ class DataLoader_bytrajec2():
             ped_cnt += cur_pednum
             batch_id = (cur_set, cur_frame,)
 
-            if cur_pednum>=self.args.batch_around_ped*2:
-                #too many people in current scene
-                #split the scene into two batches
-                ind = traject_batch[self.args.obs_length - 1].argsort(0)
-                cur_batch_data,cur_Batch_id=[],[]
-                Seq_batchs = [traject_batch[:,ind[:cur_pednum // 2,0]], traject_batch[:,ind[cur_pednum // 2:, 0]]]
+            # if cur_pednum>=self.args.batch_around_ped*2:
+            #     #too many people in current scene
+            #     #split the scene into two batches
+            #     ind = traject_batch[self.args.obs_length - 1].argsort(0)
+            #     cur_batch_data,cur_Batch_id=[],[]
+            #     Seq_batchs = [traject_batch[:,ind[:cur_pednum // 2,0]], traject_batch[:,ind[cur_pednum // 2:, 0]]]
                 
-                for sb in Seq_batchs:
-                    #这里好像有问题
-                    cur_batch_data.append(sb)
-                    cur_Batch_id.append(batch_id)
-                    cur_batch_data=self.massup_batch(cur_batch_data)
-                    batch_data_mass.append((cur_batch_data,cur_Batch_id,))
-                    cur_batch_data=[]
-                    cur_Batch_id=[]
+            #     for sb in Seq_batchs:
+            #         #这里好像有问题
+            #         cur_batch_data.append(sb)
+            #         cur_Batch_id.append(batch_id)
+            #         cur_batch_data=self.massup_batch(cur_batch_data)
+            #         batch_data_mass.append((cur_batch_data,cur_Batch_id,))
+            #         cur_batch_data=[]
+            #         cur_Batch_id=[]
 
-                last_frame = i
-            elif cur_pednum>=self.args.batch_around_ped:
-                #good pedestrian numbers
-                cur_batch_data,cur_Batch_id=[],[]
-                cur_batch_data.append(traject_batch)
-                cur_Batch_id.append(batch_id)
-                cur_batch_data=self.massup_batch(cur_batch_data)
-                batch_data_mass.append((cur_batch_data,cur_Batch_id,))
+            #     last_frame = i
+            # elif cur_pednum>=self.args.batch_around_ped:
+            #good pedestrian numbers
+            cur_batch_data,cur_Batch_id=[],[]
+            cur_batch_data.append(traject_batch)
+            cur_Batch_id.append(batch_id)
+            cur_batch_data=self.massup_batch(cur_batch_data)
+            batch_data_mass.append((cur_batch_data,cur_Batch_id,))
 
-                last_frame = i
-            else:#less pedestrian numbers <64
-                #accumulate multiple framedata into a batch
-                if batch_pednum>self.args.batch_around_ped:
-                    # enough people in the scene
-                    batch_data.append(traject_batch)
-                    Batch_id.append(batch_id)
+            last_frame = i
+            # else:#less pedestrian numbers <64
+            #     #accumulate multiple framedata into a batch
+            #     if batch_pednum>self.args.batch_around_ped:
+            #         # enough people in the scene
+            #         batch_data.append(traject_batch)
+            #         Batch_id.append(batch_id)
 
-                    batch_data=self.massup_batch(batch_data)
-                    batch_data_mass.append((batch_data,Batch_id,))
+            #         batch_data=self.massup_batch(batch_data)
+            #         batch_data_mass.append((batch_data,Batch_id,))
 
-                    last_frame=i
-                    batch_data=[]
-                    Batch_id=[]
-                else:
-                    batch_data.append(traject_batch)
-                    Batch_id.append(batch_id)
+            #         last_frame=i
+            #         batch_data=[]
+            #         Batch_id=[]
+            #     else:
+            #         batch_data.append(traject_batch)
+            #         Batch_id.append(batch_id)
 
-        if last_frame<data_index.shape[1]-1 and setname=='test' and batch_pednum>1:
-            batch_data = self.massup_batch(batch_data)
-            batch_data_mass.append((batch_data, Batch_id,))
+        # if last_frame<data_index.shape[1]-1 and setname=='test' and batch_pednum>1:
+        #     batch_data = self.massup_batch(batch_data)
+        #     batch_data_mass.append((batch_data, Batch_id,))
 
         return batch_data_mass
 
@@ -359,7 +371,7 @@ class DataLoader_bytrajec2():
         end_n=np.where(trajectory[:,0]==endframe)
         iffull = False
         ifexsitobs = False
-        print(start_n[0].shape)
+        # print(start_n[0].shape)
         if start_n[0].shape[0] == 0 and end_n[0].shape[0] != 0:  #起始帧无轨迹，终止帧有轨迹
             start_n = 0
             end_n = end_n[0][0]
@@ -382,8 +394,10 @@ class DataLoader_bytrajec2():
         offset_start=int((candidate_seq[0,0]-startframe)//skip)
 
         offset_end=self.args.seq_length+int((candidate_seq[-1,0]-endframe)//skip)
-
-        return_trajec[offset_start:offset_end+1,:3] = candidate_seq
+        try:
+            return_trajec[offset_start:offset_end+1,:3] = candidate_seq
+        except:
+            return return_trajec, iffull, ifexsitobs
 
         if return_trajec[self.args.obs_length - 1, 1] != 0:
             ifexsitobs = True
@@ -459,7 +473,7 @@ class DataLoader_bytrajec2():
                 nei_list[select, pedi, pedj] = 0
         return seq_list, nei_list, nei_num
 
-    def rotate_shift_batch(self,batch_data,ifrotate=True):
+    def rotate_shift_batch(self,batch_data,epoch,idx,ifrotate=True):
         '''
         Random ration and zero shifting.
         Random rotation is also helpful for reducing overfitting.
@@ -469,7 +483,11 @@ class DataLoader_bytrajec2():
 
         #rotate batch
         if ifrotate:
-            th = random.random() * np.pi
+            # print((epoch+1)*2*(idx+1))
+            np.random.seed((epoch+1)*2*(idx+1))
+            # np.random.seed(111)
+            th = np.random.random() * np.pi
+            # print(th)
             cur_ori = batch.copy()
             batch[:, :, 0] = cur_ori[:, :, 0] * np.cos(th) - cur_ori[:,:, 1] * np.sin(th)
             batch[:, :, 1] = cur_ori[:, :, 0] * np.sin(th) + cur_ori[:,:, 1] * np.cos(th)
@@ -482,19 +500,19 @@ class DataLoader_bytrajec2():
         return batch_data
 
 
-    def get_train_batch(self,idx):
+    def get_train_batch(self,idx,epoch):
         batch_data, batch_id = self.trainbatch[idx]
-        batch_data = self.rotate_shift_batch(batch_data,ifrotate=self.args.randomRotate)
+        batch_data = self.rotate_shift_batch(batch_data,epoch,idx,ifrotate=self.args.randomRotate)
 
         return batch_data,batch_id
-    def get_val_batch(self,idx):
+    def get_val_batch(self,idx,epoch):
         batch_data, batch_id = self.valbatch[idx]
-        batch_data = self.rotate_shift_batch(batch_data,ifrotate=self.args.randomRotate)
+        batch_data = self.rotate_shift_batch(batch_data,epoch,idx,ifrotate=self.args.randomRotate)
         return batch_data, batch_id
 
-    def get_test_batch(self,idx):
+    def get_test_batch(self,idx,epoch):
         batch_data, batch_id = self.testbatch[idx]
-        batch_data = self.rotate_shift_batch(batch_data,ifrotate=False)
+        batch_data = self.rotate_shift_batch(batch_data,epoch,idx,ifrotate=False)
         return batch_data, batch_id
 
     def reset_batch_pointer(self, set,valid=False):
@@ -530,10 +548,7 @@ def L2forTest(outputs,targets,obs_length,lossMask):
     Evaluation.
     '''
     seq_length = outputs.shape[0]
-    outputs[:,:,0]=(outputs[:,:,0]+1)*635.736955/2-266.84548329
-    outputs[:,:,1]=(outputs[:,:,1]+1)*558.0102949/2-283.75737486
-    targets[:,:,0]=(targets[:,:,0]+1)*635.736955/2-266.84548329
-    targets[:,:,1]=(targets[:,:,1]+1)*558.0102949/2-283.75737486
+
     error=torch.norm(outputs-targets,p=2,dim=2)
     #only calculate the pedestrian presents fully presented in the time window
     pedi_full=torch.sum(lossMask,dim=0)==seq_length
@@ -543,17 +558,14 @@ def L2forTest(outputs,targets,obs_length,lossMask):
     error_cnt=error_full.numel()
     final_error=torch.sum(error_full[-1])
     final_error_cnt=error_full[-1].numel()
-
-    return error.item(),error_cnt,final_error.item(),final_error_cnt,error_full
+    first_erro=torch.sum(error_full[-8])
+    first_erro_cnt=error_full[-8].numel()
+    return error.item(),error_cnt,final_error.item(),final_error_cnt,error_full,first_erro.item(),first_erro_cnt
 def L2forTest_nl(outputs,targets,obs_length,lossMask,seq_list,nl_thred):
     '''
     Evaluation including non-linear ade/fde.
     '''
     nl_list=torch.zeros(lossMask.shape).cuda()
-    outputs[:,:,0]=(outputs[:,:,0]+1)*518.9717012/2-249.609077
-    outputs[:,:,1]=(outputs[:,:,1]+1)*533.6579701/2-259.405050
-    targets[:,:,0]=(targets[:,:,0]+1)*518.9717012/2-249.609077
-    targets[:,:,1]=(targets[:,:,1]+1)*533.6579701/2-259.405050
     pednum=targets.shape[1]
     for ped in range(pednum):
         traj=targets[seq_list[:,ped]>0,ped]
@@ -574,8 +586,10 @@ def L2forTest_nl(outputs,targets,obs_length,lossMask,seq_list,nl_thred):
     error_cnt=error_full.numel()
     final_error=torch.sum(error_full[-1])
     final_error_cnt=error_full[-1].numel()
+    first_erro=torch.sum(error_full[-8])
+    first_erro_cnt=error_full[-8].numel()
     error_nl=error_nl[error_nl>0]
-    return error_sum.item(),error_cnt,final_error.item(),final_error_cnt,torch.sum(error_nl).item(),error_nl.numel(),error_full
+    return error_sum.item(),error_cnt,final_error.item(),final_error_cnt,torch.sum(error_nl).item(),error_nl.numel(),error_full,first_erro.item(),first_erro_cnt
 
 def import_class(name):
     components = name.split('.')

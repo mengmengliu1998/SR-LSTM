@@ -15,7 +15,7 @@ def get_parser():
         '--using_cuda',default=True,type=ast.literal_eval) # We did not test on cpu
     # You may change these arguments (model selection and dirs)
     parser.add_argument(
-        '--test_set',default=0,type=int,
+        '--test_set',default=1,type=int,
         help='Set this value to 0~4 for ETH-univ, ETH-hotel, UCY-zara01, UCY-zara02, UCY-univ')
     parser.add_argument(
         '--gpu', default=0,type=int,
@@ -29,6 +29,8 @@ def get_parser():
     parser.add_argument(
         '--phase', default='train',
         help='Set this value to \'train\' or \'test\'')
+    parser.add_argument(
+        '--GT',default=True)
     parser.add_argument(
         '--train_model', default='srlstm',
         help='Your model name')
@@ -153,7 +155,7 @@ def get_parser():
     parser.add_argument(
         '--show_step',default=40,type=int)
     parser.add_argument(
-        '--start_test',default=100,type=int)
+        '--start_test',default=10,type=int)
     parser.add_argument(
         '--num_epochs',default=300,type=int)
     parser.add_argument(
@@ -176,7 +178,7 @@ def load_arg(p):
     # save arg
     if  os.path.exists(p.config):
         with open(p.config, 'r') as f:
-            default_arg = yaml.load(f)
+            default_arg = yaml.load(f,Loader=yaml.FullLoader)
         key = vars(p).keys()
         for k in default_arg.keys():
             if k not in key:

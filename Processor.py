@@ -3,16 +3,17 @@ Author: Pu Zhang
 Date: 2019/7/1
 '''
 from utils import *
-
+import torch
 import time
 import torch.nn as nn
 import yaml
+from pytorchtools import EarlyStopping
 class Processor():
     def __init__(self, args):
         self.args=args
 
         Dataloader=DataLoader_bytrajec2
-
+        self.lr=self.args.learning_rate
         self.dataloader_gt = Dataloader(args,is_gt=True)
         self.dataloader_pd=Dataloader(args,is_gt=False)
         model=import_class(args.model)
@@ -20,7 +21,15 @@ class Processor():
         self.set_optimizer()
         self.epoch=0
         self.load_model()
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.1)
+        self.init_lr=self.args.learning_rate
+        self.step_ratio=0.5
+        self.lr_step=20
+
+        # 初始化 early_stopping 对象
+        self.patience = 5	# 当验证集损失在连续5次训练周期中都没有得到降低时，停止模型训练，以防止模型过拟合
+        self.early_stopping = EarlyStopping(self.patience, verbose=True)	
+
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.1)
         # self.load_weights_from_srlstm()
         # self.parameters_update_seton_secondSR()
         # Uncomment if train the second SR layer
@@ -41,6 +50,20 @@ class Processor():
         for p in self.net.parameters():
             p.requires_grad=True
     #未使用
+
+    def adjust_learning_rate(self,optimizer,
+                            epoch,
+                            init_lr,
+                            step_ratio: float = 0.5,
+                            lr_step: int = 20,
+                            lr_adjust: str = 'step'):
+        if lr_adjust == 'step':
+            """Sets the learning rate to the initial LR decayed by 10
+            every 30 epochs"""
+            lr = init_lr * (step_ratio**(epoch // lr_step))
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        return lr
 
     def parameters_update_seton_secondSR(self):
         for p in self.net.parameters():
@@ -123,7 +146,7 @@ class Processor():
                 print('Loaded checkpoint at epoch', model_epoch)
 
     def set_optimizer(self):
-        self.optimizer = torch.optim.Adam(self.net.parameters(),lr=self.args.learning_rate)
+        self.optimizer = torch.optim.Adam(self.net.parameters(),lr=self.lr)
         self.criterion = nn.MSELoss(reduce=False)
 
     def playtest(self):
@@ -136,7 +159,11 @@ class Processor():
         find_result=[]
         test_error, test_final_error=0,0
         for epoch in range(self.epoch,self.args.num_epochs):
-            self.scheduler.step()
+            self.lr =self.adjust_learning_rate(self.optimizer, epoch,
+                                    self.init_lr,
+                                    self.step_ratio,
+                                    self.lr_step)
+
             print('Epoch-{0} lr: {1}'.format(epoch, self.optimizer.param_groups[0]['lr']))
             train_loss,_=self.train_epoch(epoch)
             val_error,val_final,_,_,_= self.val_epoch(epoch)
@@ -153,7 +180,12 @@ class Processor():
             if epoch%10==0:
                 self.log_file_curve.close()
                 self.log_file_curve = open(os.path.join(self.args.model_dir, 'log_curve.txt'), 'a+')
-
+            self.early_stopping(val_error, self.net,epoch)
+            # 若满足 early stopping 要求
+            if self.early_stopping.early_stop:
+                print("Early stopping at epoch:",self.early_stopping.get_best_epoch())
+                # 结束模型训练
+                break
             #console log
             print('----epoch {}, train_loss={:.5f}, valid_error={:.3f}, valid_final={:.3f},test_error={:.3f},valid_final={:.3f}'
                   .format(epoch, train_loss,val_error, val_final,test_error,test_final_error))

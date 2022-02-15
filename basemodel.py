@@ -185,11 +185,11 @@ class GCN(nn.Module):
 
         nei_index_t = nei_index.view((-1))
 
-        corr_t=corr_index.view((self.N * self.N, -1))
+        corr_t=corr_index.contiguous().view((self.N * self.N, -1))
 
         if corr_t[nei_index_t > 0].shape[0] == 0:
             # Ignore when no neighbor in this batch
-            return lstm_state, (0, 0, 0),(0,0)
+            return lstm_state, (0, 0, 0)
 
         r_t = self.relativeLayer.MLP(corr_t[nei_index_t > 0])
         inputs_part = nei_inputs[nei_index_t > 0]
@@ -204,8 +204,9 @@ class GCN(nn.Module):
         Pos_t = torch.full((self.N * self.N,1), 0, device=torch.device("cuda")).view(-1)
         tt = self.WAr.MLP(torch.cat((r_t, hi_t[nei_index_t > 0], nei_inputs[nei_index_t > 0]), 1)).view((-1))
         #have bug if there's any zero value in tt
-
-        Pos_t[nei_index_t > 0] = tt
+        # print(tt)
+        Pos_t=Pos_t.float()
+        Pos_t[nei_index_t > 0]= tt.float()
         Pos = Pos_t.view((self.N, self.N))
         Pos[Pos == 0] = -np.Inf
         Pos = torch.softmax(Pos, dim=1)
@@ -213,6 +214,7 @@ class GCN(nn.Module):
 
         # Message Passing
         H = torch.full((self.N * self.N, self.D), 0, device=torch.device("cuda"))
+        H=H.float()
         H[nei_index_t > 0] = inputs_part * nGate
         H[nei_index_t > 0] = H[nei_index_t > 0] * Pos_t[nei_index_t > 0].repeat(self.D, 1).transpose(0, 1)
         H = H.view(self.N, self.N, -1)
