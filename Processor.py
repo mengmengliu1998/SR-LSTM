@@ -44,12 +44,9 @@ class Processor():
         self.net_file.write(str(self.net))
         self.net_file.close()
         self.log_file_curve = open(os.path.join(self.args.model_dir, 'log_curve.txt'), 'a+')
-
-    #未使用
     def parameters_update_seton(self):
         for p in self.net.parameters():
             p.requires_grad=True
-    #未使用
 
     def adjust_learning_rate(self,optimizer,
                             epoch,
@@ -84,8 +81,10 @@ class Processor():
         self.net.gcn.W_nei.MLP[0].weight.requires_grad = False
         self.net.gcn.WAr.MLP[0].weight.requires_grad = False
 
+    def parameters_update_seton(self):
+        for p in self.net.parameters():
+            p.requires_grad=True
 
-    #这个函数和load model作用差不多，但是没有用到
     def load_weights_from_srlstm(self):
         if self.args.pretrain_load > 0:
             self.args.model_save_path = self.args.save_dir + '/' + self.args.pretrain_model + '/' + self.args.pretrain_model + '_' +\
@@ -124,13 +123,17 @@ class Processor():
 
     def load_model(self):
         if self.args.load_model > 0:
-            self.args.model_save_path = self.args.save_dir + '/' + self.args.train_model + '/' + self.args.train_model + '_' + \
-                                        str(self.args.load_model) + '.tar'
+            # self.args.model_save_path = self.args.save_dir + '/'  + self.args.train_model + '/' + self.args.train_model + '_' + \
+            #                             str(self.args.load_model) + '.tar'
+            self.args.model_save_path = self.args.save_dir + '/'  + self.args.train_model + '/' + self.args.train_model + '_' + \
+                                            str(self.args.load_model) + '.tar'
+            print(self.args.model_save_path)
             if os.path.isfile(self.args.model_save_path):
+                print(self.args.model_save_path)
                 print('Loading checkpoint')
                 checkpoint = torch.load(self.args.model_save_path,map_location={'cuda:0': 'cuda:'+str(self.args.gpu)})
                 model_epoch = checkpoint['epoch']
-                self.epoch=model_epoch
+                self.epoch=int(model_epoch)
                 self.net.load_state_dict(checkpoint['state_dict'])
                 print('Loaded checkpoint at epoch', model_epoch)
 
@@ -187,7 +190,7 @@ class Processor():
                 # 结束模型训练
                 break
             #console log
-            print('----epoch {}, train_loss={:.5f}, valid_error={:.3f}, valid_final={:.3f},test_error={:.3f},valid_final={:.3f}'
+            print('----epoch {}, train_loss={:.5f}, valid_error={:.3f}, valid_final={:.3f},test_error={:.3f},test_final={:.3f}'
                   .format(epoch, train_loss,val_error, val_final,test_error,test_final_error))
 
     def smaller(self,A,Aepoch,B,Bepoch):
@@ -228,8 +231,13 @@ class Processor():
             v2_sum+=v2
             v3_sum+=v3
 
+<<<<<<< HEAD
             lossmask,num=getLossMask(outputs, seq_list[0],seq_list[1:],using_cuda=self.args.using_cuda)  #计算loss时只计算存在轨迹处的loss
             loss_o=torch.sum(self.criterion(outputs, batch_norm_gt[1:,:,:2]),dim=2) #使用了MSEloss
+=======
+            lossmask,num=getLossMask(outputs, seq_list[0],seq_list[1:],using_cuda=self.args.using_cuda)
+            loss_o=torch.sum(self.criterion(outputs, batch_norm[1:,:,:2]),dim=2)
+>>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
 
             loss += torch.sum(loss_o*lossmask)/num
             loss_epoch+=loss.item()

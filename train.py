@@ -24,15 +24,20 @@ def get_parser():
         '--base_dir',default='.',
         help='Base directory including these scrits.')
     parser.add_argument(
-        '--save_base_dir',default='./savedata/',
+        '--save_base_dir',default='savedata/',
         help='Directory for saving caches and models.')
     parser.add_argument(
         '--phase', default='train',
         help='Set this value to \'train\' or \'test\'')
+    #TODO:CHANGED by Lmm
     parser.add_argument(
+<<<<<<< HEAD
         '--GT',default=True)
     parser.add_argument(
         '--train_model', default='srlstm',
+=======
+        '--train_model', default='sr_lstm',
+>>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
         help='Your model name')
     parser.add_argument(
         '--load_model', default=0,type=int,
@@ -139,11 +144,11 @@ def get_parser():
 
     #Perprocess
     parser.add_argument(
-        '--seq_length',default=13,type=int)
+        '--seq_length',default=20,type=int)
     parser.add_argument(
-        '--obs_length',default=5,type=int)
+        '--obs_length',default=8,type=int)
     parser.add_argument(
-        '--pred_length',default=8,type=int)
+        '--pred_length',default=12,type=int)
     parser.add_argument(
         '--batch_around_ped',default=128,type=int)
     parser.add_argument(
@@ -204,11 +209,13 @@ if __name__ == '__main__':
     p.save_dir=p.save_base_dir+str(p.test_set)+'/'
     p.model_dir=p.save_base_dir+str(p.test_set)+'/'+p.train_model+'/'
     p.config=p.model_dir+'/config_'+p.phase+'.yaml'
+
     print(p.seq_length)
     if not load_arg(p):
         save_arg(p)
     args = load_arg(p)
     print(args.seq_length)
+    print("args.phase",args.phase)
     torch.cuda.set_device(args.gpu)
     processor = Processor(args)
     if args.phase=='test':
