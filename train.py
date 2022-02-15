@@ -31,13 +31,9 @@ def get_parser():
         help='Set this value to \'train\' or \'test\'')
     #TODO:CHANGED by Lmm
     parser.add_argument(
-<<<<<<< HEAD
         '--GT',default=True)
     parser.add_argument(
-        '--train_model', default='srlstm',
-=======
         '--train_model', default='sr_lstm',
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
         help='Your model name')
     parser.add_argument(
         '--load_model', default=0,type=int,

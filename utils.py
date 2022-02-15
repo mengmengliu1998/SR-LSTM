@@ -25,12 +25,8 @@ class DataLoader_bytrajec2():
             #                   './data/ucy/zara/zara01', './data/ucy/zara/zara02',
             #                   './data/ucy/univ/students001','data/ucy/univ/students003',
             #                   './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
-<<<<<<< HEAD
-            self.data_dirs = ['./data/nuscenes/subset_04/train', './data/nuscenes/subset_04/val']
-=======
             self.data_dirs = ['./data/nuscenes/subset_04/train','./data/nuscenes/subset_04/val']
             # self.data_dirs = ['./data/nuscenes/subset_04/val','./data/nuscenes/subset_04/val']
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             # Data directory where the pre-processed pickle file resides
             self.data_dir = './data'
             # skip=[6,10,10,10,10,10,10,10]
@@ -53,7 +49,6 @@ class DataLoader_bytrajec2():
             self.test_dir = [self.data_dirs[x] for x in self.test_set]
             self.trainskip=[skip[x] for x in train_set]
             self.testskip=[skip[x] for x in self.test_set]
-<<<<<<< HEAD
         if is_gt:
             self.train_data_file = os.path.join(self.args.save_dir,"train_trajectories_gt.cpkl")
             self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories_gt.cpkl")
@@ -64,10 +59,8 @@ class DataLoader_bytrajec2():
             self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories_pd.cpkl")
             self.train_batch_cache = os.path.join(self.args.save_dir,"train_batch_cache_pd.cpkl")
             self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache_pd.cpkl")
-=======
             
         self.num_tra=0
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
 
 
         print("Creating pre-processed data from raw data.")
@@ -253,14 +246,11 @@ class DataLoader_bytrajec2():
                 IFfull.append(iffull)
             if traject.__len__()<1:
                 continue
-<<<<<<< HEAD
             #起始帧和终止帧之间无一条完整轨迹，continue
             # if sum(IFfull)<1:
             #     continue
-=======
             if sum(IFfull)<1:
                 continue
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             self.num_tra+=traject.__len__()
             traject_batch=np.concatenate(traject,1)
             # if traject.__len__()==1:
@@ -270,24 +260,18 @@ class DataLoader_bytrajec2():
             cur_pednum = traject_batch.shape[1]
             ped_cnt += cur_pednum
             batch_id = (cur_set, cur_frame,)
-<<<<<<< HEAD
 
-=======
             # print("traject.__len__()",traject.__len__(),"cur_pednum",cur_pednum)
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             # if cur_pednum>=self.args.batch_around_ped*2:
             #     #too many people in current scene
             #     #split the scene into two batches
             #     ind = traject_batch[self.args.obs_length - 1].argsort(0)
             #     cur_batch_data,cur_Batch_id=[],[]
             #     Seq_batchs = [traject_batch[:,ind[:cur_pednum // 2,0]], traject_batch[:,ind[cur_pednum // 2:, 0]]]
-<<<<<<< HEAD
                 
             #     for sb in Seq_batchs:
             #         #这里好像有问题
-=======
             #     for sb in Seq_batchs:
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             #         cur_batch_data.append(sb)
             #         cur_Batch_id.append(batch_id)
             #         cur_batch_data=self.massup_batch(cur_batch_data)
@@ -297,11 +281,8 @@ class DataLoader_bytrajec2():
 
             #     last_frame = i
             # elif cur_pednum>=self.args.batch_around_ped:
-<<<<<<< HEAD
             #good pedestrian numbers
-=======
                 #good pedestrian numbers
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             cur_batch_data,cur_Batch_id=[],[]
             cur_batch_data.append(traject_batch)
             cur_Batch_id.append(batch_id)
@@ -386,13 +367,8 @@ class DataLoader_bytrajec2():
         # print("start_n",start_n,"end_n",end_n)
         iffull = False
         ifexsitobs = False
-<<<<<<< HEAD
         # print(start_n[0].shape)
         if start_n[0].shape[0] == 0 and end_n[0].shape[0] != 0:  #起始帧无轨迹，终止帧有轨迹
-=======
-        # print("start_n",start_n[0].shape,"end_n",end_n[0].shape)
-        if start_n[0].shape[0] == 0 and end_n[0].shape[0] != 0:
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             start_n = 0
             end_n = end_n[0][0]
             if end_n==0:
@@ -417,20 +393,14 @@ class DataLoader_bytrajec2():
         offset_start=int((candidate_seq[0,0]-startframe)//skip)
 
         offset_end=self.args.seq_length+int((candidate_seq[-1,0]-endframe)//skip)
-<<<<<<< HEAD
-=======
         # print("offset_start",offset_start,"offset_end",offset_end)
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
         try:
             return_trajec[offset_start:offset_end+1,:3] = candidate_seq
         except:
             return return_trajec, iffull, ifexsitobs
-<<<<<<< HEAD
 
-=======
         # if offset_end<0:
         #     print("return_trajec",return_trajec,"offset_start",offset_start,"offset_end",offset_end)
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
         if return_trajec[self.args.obs_length - 1, 1] != 0:
             ifexsitobs = True
 
@@ -582,10 +552,7 @@ def L2forTest(outputs,targets,obs_length,lossMask):
     Evaluation.
     '''
     seq_length = outputs.shape[0]
-<<<<<<< HEAD
 
-=======
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
     error=torch.norm(outputs-targets,p=2,dim=2)
     #only calculate the pedestrian presents fully presented in the time window
     pedi_full=torch.sum(lossMask,dim=0)==seq_length

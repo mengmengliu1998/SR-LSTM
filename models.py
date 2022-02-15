@@ -67,7 +67,6 @@ class SR_LSTM(nn.Module):
             
         # For each frame in the sequence
         for framenum in range(self.args.seq_length-1):
-<<<<<<< HEAD
              #changed by LMM :get speed mask
             seq_length = outputs.shape[0]
             node_pre=seq_list[0]
@@ -78,17 +77,10 @@ class SR_LSTM(nn.Module):
                 if i>0:
                     node_pre=seq_list[i-1]
             # speedmask=np.repeat(speedmask, 2, axis=1)
-=======
-                       #changed by LMM :使用相对坐标实验
-            # if framenum==0:
-            #     outputs[framenum,:]=nodes_norm[framenum,:]
-            # else:
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             if framenum >= self.args.obs_length and iftest:   #inference阶段
                 #不同的node代表不同行人的轨迹
                 node_index = seq_list[self.args.obs_length - 1] > 0 #当至少存在一步观察轨迹时，我们才认为这段轨迹是有效轨迹
                 nodes_current = outputs[framenum - 1, node_index].clone()  #取有效轨迹上一帧的输出，使用上一帧的输出作为当前帧输入
-<<<<<<< HEAD
                 if nodes_current.shape[0]==0:
                     continue
                 nodes_abs=shift_value[framenum,node_index]+nodes_current   #绝对轨迹值
@@ -106,20 +98,6 @@ class SR_LSTM(nn.Module):
                 # print(nodes_abs[framenum, node_index].shape,nodes_current.shape[0])
                 if nodes_current.shape[0]==0:
                     continue
-=======
-                nodes_abs=shift_value[framenum,node_index]+nodes_current   #绝对轨迹值
-                nodes_abs=nodes_abs.repeat(nodes_abs.shape[0], 1, 1)
-                #此transpose(0,1)并不对corr造成任何变化
-                corr_index=nodes_abs.transpose(0,1)-nodes_abs    #Correction，shift the origin to the latest observed time step
-                # print("corr_index",corr_index)
-            else: #训练阶段
-                node_index=seq_list[framenum]>0   #当前帧有轨迹时，我们才使用这段轨迹
-                nodes_current = nodes_norm[framenum,node_index]  #使用GT作为输入
-                if nodes_current.shape[0]==0:
-                    continue
-                # print("nodes_current.shape",nodes_current.shape)
-                # print("nodes_current.shape[0]",nodes_current.shape[0])
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
                 corr = nodes_abs[framenum, node_index].repeat(nodes_current.shape[0], 1, 1)
                 # print("corr.shape",corr.shape)
                 nei_index = nei_list[framenum, node_index]
@@ -127,7 +105,6 @@ class SR_LSTM(nn.Module):
                 # relative coords
                 corr_index = corr.transpose(0,1)-corr  
                 nei_num_index=nei_num[framenum,node_index]
-<<<<<<< HEAD
                 if framenum>0:
                     nodes_abs_pre=nodes_abs[framenum-1, node_index]
                     # print(speedmask[framenum].shape,nodes_abs[framenum, node_index].shape,nodes_abs_pre[:,:].shape)
@@ -142,9 +119,6 @@ class SR_LSTM(nn.Module):
                     nodes_velocity=torch.norm(nodes_speed,dim=1)* speedmask[framenum, node_index]
             # print("framenum>",framenum,"nodes_speed","",nodes_speed,"nodes_ori",nodes_ori,"nodes_velocity",nodes_velocity)
             # print("nodes_abs[framenum, node_index]-nodes_abs_pre[:,:]",nodes_abs[framenum, node_index],nodes_abs_pre[:,:])
-=======
-                # print("corr.transpose(0,1)[2,3]",corr.transpose(0,1)[2,3],"corr[2,3]",corr[2,3],"corr.transpose(0,1)[3,2]",corr.transpose(0,1)[3,2])
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
             hidden_states_current=hidden_states[node_index]
             cell_states_current=cell_states[node_index]
             #TODO:更改这里可以选择使用相对坐标还是绝对坐标

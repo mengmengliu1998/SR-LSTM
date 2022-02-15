@@ -231,13 +231,8 @@ class Processor():
             v2_sum+=v2
             v3_sum+=v3
 
-<<<<<<< HEAD
             lossmask,num=getLossMask(outputs, seq_list[0],seq_list[1:],using_cuda=self.args.using_cuda)  #计算loss时只计算存在轨迹处的loss
             loss_o=torch.sum(self.criterion(outputs, batch_norm_gt[1:,:,:2]),dim=2) #使用了MSEloss
-=======
-            lossmask,num=getLossMask(outputs, seq_list[0],seq_list[1:],using_cuda=self.args.using_cuda)
-            loss_o=torch.sum(self.criterion(outputs, batch_norm[1:,:,:2]),dim=2)
->>>>>>> 6d34743f331e4bf6af35e2fb7c2db236dbe0bb5e
 
             loss += torch.sum(loss_o*lossmask)/num
             loss_epoch+=loss.item()
@@ -247,8 +242,8 @@ class Processor():
             end= time.time()
             if batch%self.args.show_step==0 and self.args.ifshow_detail:
                 print(
-                'train-{}/{} (epoch {}), train_loss = {:.5f}, time/batch = {:.5f}, value1={:.5f},value2={:.5f},value3={:.5f}'.format(batch,self.dataloader_pd.trainbatchnums,
-                                                                                epoch,
+                'train-{}/{} (epoch {}), train_loss = {:.5f}, time/batch = {:.5f}, value1={:.5f},value2={:.5f},value3={:.5f}'.format(batch,self.dataloader_pd.trainbatchnums,\
+                                                                                epoch,\
                                                                                 loss.item(), end - start,v1,v2,v3))
         train_loss_epoch = loss_epoch / self.dataloader_pd.trainbatchnums
         v1_sum=v1_sum / self.dataloader_pd.trainbatchnums
